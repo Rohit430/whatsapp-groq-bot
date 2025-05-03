@@ -1,6 +1,5 @@
-const baileys = require('@whiskeysockets/baileys');
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = baileys;
-const { Boom } = require('@hapi/boom');
+const baileys = require('@whiskeysockets/baileys');  // Import entire module
+const { makeWASocket, useSingleFileAuthState } = baileys; // Destructure directly from `baileys`
 const axios = require('axios');
 const fs = require('fs');
 
