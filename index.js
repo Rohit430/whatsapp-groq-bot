@@ -1,14 +1,10 @@
-import pkg from '@whiskeysockets/baileys';
-import axios from 'axios';
-import { readFileSync, writeFileSync } from 'fs';
-import path from 'path';
+const baileys = require('@whiskeysockets/baileys');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
-const {
-  default: makeWASocket,
-  useSingleFileAuthState
-} = pkg;
+const { default: makeWASocket, useSingleFileAuthState } = baileys;
 
-const __dirname = path.resolve();
 const authFile = path.join(__dirname, './auth.json');
 const { state, saveState } = useSingleFileAuthState(authFile);
 
@@ -21,7 +17,11 @@ async function startBot() {
     if (!msg.message || msg.key.fromMe) return;
 
     const chatId = msg.key.remoteJid;
-    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+    const text =
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      '';
+
     if (!text) return;
 
     try {
@@ -30,14 +30,18 @@ async function startBot() {
         {
           model: 'llama3-8b-8192',
           messages: [
-            { role: 'system', content: 'You are a helpful assistant replying to customers.' },
-            { role: 'user', content: text }
-          ]
+            {
+              role: 'system',
+              content: 'You are a helpful assistant replying to customers.',
+            },
+            { role: 'user', content: text },
+          ],
         },
         {
           headers: {
-            Authorization: `Bearer ${process.env.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}`
-          }
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
         }
       );
 
@@ -45,7 +49,9 @@ async function startBot() {
       await sock.sendMessage(chatId, { text: reply });
     } catch (error) {
       console.error('Error from Groq:', error.message);
-      await sock.sendMessage(chatId, { text: 'Sorry, something went wrong!' });
+      await sock.sendMessage(chatId, {
+        text: 'Sorry, something went wrong!',
+      });
     }
   });
 }
