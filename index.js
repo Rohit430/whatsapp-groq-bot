@@ -1,16 +1,22 @@
-const baileys = require('@whiskeysockets/baileys');  // Import entire module
-const { makeWASocket, useSingleFileAuthState } = baileys; // Destructure directly from `baileys`
+const { makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const fs = require('fs');
 
+// Auth file path
 const authFile = './auth_info.json';
-const { state, saveState } = useSingleFileAuthState(authFile);
 
-const groqApiKey = process.env.GROQ_API_KEY;
+// Check if the authentication file exists or create it
+let state;
+if (fs.existsSync(authFile)) {
+  state = require(authFile);
+} else {
+  state = {};
+}
 
+// Initialize socket
 const sock = makeWASocket({
-  printQRInTerminal: true,
   auth: state,
+  printQRInTerminal: true,
 });
 
 sock.ev.on('messages.upsert', async (messageUpdate) => {
@@ -32,7 +38,7 @@ sock.ev.on('connection.update', (update) => {
   const { connection, lastDisconnect } = update;
 
   if (connection === 'close') {
-    if (lastDisconnect.error?.output?.statusCode !== 401) {
+    if (lastDisconnect?.error?.output?.statusCode !== 401) {
       console.log('Unexpected disconnection:', lastDisconnect.error);
     } else {
       console.log('Connection closed. Reconnecting...');
@@ -50,7 +56,7 @@ async function getGroqResponse(query) {
       },
       {
         headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
           'Content-Type': 'application/json',
         },
       }
@@ -71,9 +77,15 @@ async function sendMessage(to, text) {
   }
 }
 
-startBot();
-
 function startBot() {
   console.log('Starting WhatsApp bot...');
-  sock.connect();
+  sock.connect()
+    .then(() => {
+      console.log('Bot connected successfully');
+    })
+    .catch((error) => {
+      console.error('Error connecting bot:', error);
+    });
 }
+
+startBot();
