@@ -1,0 +1,45 @@
+// Import necessary libraries
+const { useSingleFileAuthState, makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const fs = require('fs');
+const path = require('path');
+
+// Path to the auth file
+const authFile = './auth_info.json'; // Make sure this file is accessible and persists across restarts
+
+// Load the auth state
+const { state, saveState } = useSingleFileAuthState(authFile);
+
+// Check if the state is loaded correctly
+if (!state || !state.creds || !state.creds.me) {
+  console.error('Authentication state not loaded correctly.');
+  process.exit(1);  // Exit if authentication is not valid
+}
+
+// Function to start the bot
+const startBot = async () => {
+  try {
+    // Initialize the socket with the authentication state
+    const sock = await makeWASocket({
+      auth: state, // Pass the auth state
+      printQRInTerminal: true, // Show QR code in terminal for first-time authentication
+    });
+
+    // Event listener for connection updates
+    sock.ev.on('connection.update', (update) => {
+      console.log(update);
+
+      if (update.connection === 'close') {
+        console.log('Connection closed, reconnecting...');
+        startBot(); // Attempt to reconnect
+      } else if (update.connection === 'open') {
+        console.log('Bot connected successfully!');
+      }
+    });
+
+    // Event listener for receiving messages
+    sock.ev.on('messages.upsert', (message) => {
+      console.log('New message received:', message);
+      // Add your message handling logic here (e.g., replying to messages, etc.)
+    });
+
+    // Save the authen
