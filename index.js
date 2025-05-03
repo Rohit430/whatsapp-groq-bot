@@ -1,7 +1,12 @@
-import makeWASocket, { useSingleFileAuthState } from '@whiskeysockets/baileys';
+import pkg from '@whiskeysockets/baileys';
 import axios from 'axios';
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
+
+const {
+  default: makeWASocket,
+  useSingleFileAuthState
+} = pkg;
 
 const __dirname = path.resolve();
 const authFile = path.join(__dirname, './auth.json');
