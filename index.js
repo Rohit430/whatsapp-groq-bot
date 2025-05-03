@@ -1,4 +1,5 @@
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const baileys = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = baileys;
 const { Boom } = require('@hapi/boom');
 const axios = require('axios');
 const fs = require('fs');
@@ -6,58 +7,74 @@ const fs = require('fs');
 const authFile = './auth_info.json';
 const { state, saveState } = useSingleFileAuthState(authFile);
 
-async function connectToWhatsApp() {
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true,
-  });
+const groqApiKey = process.env.GROQ_API_KEY;
 
-  sock.ev.on('creds.update', saveState);
+const sock = makeWASocket({
+  printQRInTerminal: true,
+  auth: state,
+});
 
-  sock.ev.on('messages.upsert', async (m) => {
-    const msg = m.messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+sock.ev.on('messages.upsert', async (messageUpdate) => {
+  try {
+    const messages = messageUpdate.messages;
+    const message = messages[0];
+    const messageText = message?.text;
 
-    const sender = msg.key.remoteJid;
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if (messageText) {
+      const response = await getGroqResponse(messageText);
+      await sendMessage(message.key.remoteJid, response);
+    }
+  } catch (error) {
+    console.error('Error processing message:', error);
+  }
+});
 
-    if (text) {
-      console.log('📩 New message:', text);
+sock.ev.on('connection.update', (update) => {
+  const { connection, lastDisconnect } = update;
 
-      // Send message to Groq API
-      try {
-        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: 'llama3-8b-8192',
-          messages: [
-            { role: 'system', content: 'You are a helpful assistant.' },
-            { role: 'user', content: text },
-          ],
-        }, {
-          headers: {
-            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        });
+  if (connection === 'close') {
+    if (lastDisconnect.error?.output?.statusCode !== 401) {
+      console.log('Unexpected disconnection:', lastDisconnect.error);
+    } else {
+      console.log('Connection closed. Reconnecting...');
+      startBot();
+    }
+  }
+});
 
-        const reply = res.data.choices[0].message.content;
-        await sock.sendMessage(sender, { text: reply });
-      } catch (err) {
-        console.error('Groq API error:', err.response?.data || err.message);
-        await sock.sendMessage(sender, { text: 'Sorry, I had an issue replying.' });
+async function getGroqResponse(query) {
+  try {
+    const response = await axios.post(
+      'https://api.groq.com/v1/query',
+      {
+        query: query,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+          'Content-Type': 'application/json',
+        },
       }
-    }
-  });
+    );
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error = new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('connection closed due to', lastDisconnect.error, ', reconnecting:', shouldReconnect);
-      if (shouldReconnect) connectToWhatsApp();
-    } else if (connection === 'open') {
-      console.log('✅ Connected to WhatsApp');
-    }
-  });
+    return response.data?.result || 'Sorry, I didn’t understand that.';
+  } catch (error) {
+    console.error('Error with Groq API:', error);
+    return 'Sorry, there was an issue with the server.';
+  }
 }
 
-connectToWhatsApp();
+async function sendMessage(to, text) {
+  try {
+    await sock.sendMessage(to, { text });
+  } catch (error) {
+    console.error('Error sending message:', error);
+  }
+}
+
+startBot();
+
+function startBot() {
+  console.log('Starting WhatsApp bot...');
+  sock.connect();
+}
